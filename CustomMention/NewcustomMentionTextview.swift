@@ -2,21 +2,15 @@
 //  customMentionTextview.swift
 //  EFSS
 //
-//  Created by Durgesh on 28/02/19.
+//  Created by Nagmani Singh on 28/02/19.
 //  Copyright © 2019 Durgesh. All rights reserved.
 //
 
 import UIKit
 public protocol NewcustomMentionTextviewDelegate: class {
     func attheRatePressed(str:String)
-    func hideTableview()
-    func hideNoSearchView()
-    func enableRightButton()
-    func disableRightButton()
-    func cancelPreviousAPICall()
     func dynamicHeightTextview(value:CGFloat)
     func showScrollIndicator()
-    func showWarningForMentionTxtView(toShow:Bool)
     func showSharedPostDeleteConfirmation()
 }
 extension NewcustomMentionTextviewDelegate{
@@ -38,7 +32,7 @@ enum TYPE {
     case POST
 }
 
-public class NewcustomMentionTextview: UIView, UITextViewDelegate {
+public class NewcustomMentionTextview: UIView, UITextViewDelegate, UITableViewDelegate, UITableViewDataSource {
     
     public var textviewEditMode: CustomMentionTextView?
     var placeholderShow = true
@@ -50,14 +44,14 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     var contentList:[String] = []
     var resultList:[PostContentType] = []
     var tempArrayDemo:[String] = []
-    weak var delegate: NewcustomMentionTextviewDelegate?
+    public weak var delegate: NewcustomMentionTextviewDelegate?
     var timerForShowScrollIndicator: Timer?
     var widthOfBlank : CGFloat = 0.0
-    var refsValue = [String: Any]()
-    var selectedPostId = ""
     var showDeleteAttachment = true
     var isAtTheRatePressed = false
     let textCount = 10000
+    public var myArray: [String] = ["First","Second","Third"]
+    public var myTableView: UITableView!
     override init(frame: CGRect) {
         super.init(frame: frame)
         //createCustomTextview()
@@ -70,13 +64,62 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
         textviewEditMode = CustomMentionTextView(frame: CGRect(x: 0.0, y: 0.0, width: wid, height: self.frame.height))
         textviewEditMode?.isScrollEnabled = false
         textviewEditMode?.isEditable = true
-        textviewEditMode?.setPlaceholderNew(localizeValue: "@Mention anyone or any business group that needs to see this post.\nYou can easily search for related posts if you add #hashtags.")
         textviewEditMode?.textColor = fp_s59.color
         textviewEditMode?.font = fp_s59.font
         textviewEditMode?.delegate = self
         //textviewEditMode?.autocorrectionType = .no
         textviewEditMode?.backgroundColor = fp_s16.color
         self.addSubview(textviewEditMode!)
+        
+        myTableView = UITableView(frame: CGRect(x: 0, y: 50, width: 300, height: 100))
+        myTableView.register(UITableViewCell.self, forCellReuseIdentifier: "MyCell")
+        myTableView.dataSource = self
+        myTableView.delegate = self
+        myTableView.layer.borderWidth = 1.0
+        myTableView.layer.borderColor = UIColor.lightGray.cgColor
+        self.addSubview(myTableView)
+        hideMentionSuggestion(value: true)
+    }
+    
+    public func hideMentionSuggestion(value:Bool) {
+        myTableView.isHidden = value
+        if !value{
+            self.showTableSuggestions()
+        }
+    }
+    
+    private func showTableSuggestions() {
+        if let cursorPosition = textviewEditMode?.selectedTextRange?.start {
+            let caretPositionRectangle: CGRect = (textviewEditMode?.caretRect(for: cursorPosition))!
+            // now use either the whole rectangle, or its origin (caretPositionRectangle.origin)
+            print(caretPositionRectangle)
+            if caretPositionRectangle.origin.y>138.0{
+                self.myTableView.frame.origin.y = 0.0
+            } else{
+                let temp = caretPositionRectangle.origin.y+30.0
+                self.myTableView.frame.origin.y = temp
+            }
+            self.bringSubview(toFront: self.myTableView)
+        }
+    }
+    
+    public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        self.returnedStringAPI(returnedString: myArray[indexPath.row])
+        self.hideMentionSuggestion(value: true)
+    }
+    
+    public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return myArray.count
+    }
+    
+    public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "MyCell", for: indexPath as IndexPath)
+        cell.textLabel!.text = "\(myArray[indexPath.row])"
+        return cell
+    }
+    
+    public func setplaceholder(str:String){
+        textviewEditMode?.setPlaceholderNew(localizeValue: str)
     }
     
     public class func instanceFromNib() -> NewcustomMentionTextview {
@@ -84,96 +127,8 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     }
     
     func setTextTempNew(str:[PostContentType]) {
-        textviewEditMode?.refsDictionary = refsValue
-        textviewEditMode?.postID = selectedPostId
         textviewEditMode?.setTextNew(text: str, andMentionColor: Fp_s29.color, font: fp_s26.font, hashtagFont: Fp_s32.font, mentiontagFont: Fp_s29.font, strArray: self.tempArrayDemo, cursorPostion: self.getCurrentCursorPostion())
             self.setCurrentCursorPositionToEnd()
-    }
-    
-    func configureContentsLabelNew(content:String) -> [PostContentType]{
-        var currEndIndex = 0
-        self.indexList.append(0)
-        do {
-            let input = content
-            let regex = try NSRegularExpression(pattern: "[(<@)|(<!)|(<#)|(<$)]{1}[^<^>]*>", options: NSRegularExpression.Options.caseInsensitive)
-            let matches = regex.matches(in: input, options: [], range: NSRange(location: 0, length: input.utf16.count))
-            if matches.count>0{
-                for i in 0...matches.count-1{
-                    if matches[i].range.location != currEndIndex{
-                        self.indexList.append(matches[i].range.location)
-                    }
-                    currEndIndex = matches[i].range.length+matches[i].range.location
-                    self.indexList.append(currEndIndex)
-                }
-            }
-            self.indexList.append(NSString(string: content).length)
-        } catch {
-            // regex was bad!
-        }
-        print(self.indexList)
-        
-        if self.indexList.count>0{
-            for i in 0..<self.indexList.count-1{
-                let startPos = self.indexList[i]
-                let endPos = self.indexList[i+1]
-                if startPos != endPos{
-                    self.contentList.append(NSString(string: content).substring(with: NSRange(location: startPos, length: endPos-startPos)))
-                    //self.contentList.append(content.substring(from: startPos, to: endPos))
-                }
-            }
-        }
-        print(self.contentList)
-        
-        if self.contentList.count>0{
-            for i in 0...self.contentList.count-1{
-                if self.contentList[i].range(of: "(<@).*(>)", options: .regularExpression, range: nil, locale: nil) != nil && self.contentList[i].contains("|"){
-                    if self.contentList[i].hasSuffix("|>"){
-                        let obj = PostContentType(value: self.contentList[i], id:  nil, type: TYPE.TEXT)
-                        self.resultList.append(obj)
-                        continue
-                    }
-                    let tempArray = self.contentList[i].split(separator: "|")
-                    let name = tempArray[0].replacingOccurrences(of: "<@", with: "")
-                    let id = tempArray[1].replacingOccurrences(of: ">", with: "")
-                    if !refsValue.keys.contains(id){
-                        let obj = PostContentType(value: self.contentList[i], id:  nil, type: TYPE.TEXT)
-                        self.resultList.append(obj)
-                        continue
-                    }
-                    let obj = PostContentType(value: name, id: id, type: TYPE.MENTION)
-                    self.resultList.append(obj)
-                } else if self.contentList[i].range(of: "(<$)*(>)", options: .regularExpression, range: nil, locale: nil) != nil && self.contentList[i].contains("|"){
-                    if self.contentList[i].hasSuffix("|>"){
-                        let obj = PostContentType(value: self.contentList[i], id:  nil, type: TYPE.TEXT)
-                        self.resultList.append(obj)
-                        continue
-                    }
-                    let tempArray = self.contentList[i].split(separator: "|")
-                    //let name = tempArray[0].replacingOccurrences(of: "<$", with: "")
-                    let id = tempArray[1].replacingOccurrences(of: ">", with: "")
-                    selectedPostId = id
-                    if !refsValue.keys.contains(id){
-                        let obj = PostContentType(value: self.contentList[i], id:  nil, type: TYPE.TEXT)
-                        self.resultList.append(obj)
-                        continue
-                    }
-                    let obj = PostContentType(value: "\u{FEFF}", id: id, type: TYPE.POST)
-                    self.resultList.append(obj)
-                } else if self.contentList[i].range(of: "(<!).*(>)", options: .regularExpression, range: nil, locale: nil) != nil{
-                    let stringURL = self.contentList[i].substring(from: 2, to: self.contentList[i].count-1)
-                    let obj = PostContentType(value: stringURL, id:  nil, type: TYPE.HREF)
-                    self.resultList.append(obj)
-                } else if self.contentList[i].range(of: "(<#).*(>)", options: .regularExpression, range: nil, locale: nil) != nil && !self.contentList[i].contains(" ") && self.contentList[i].last == ">"{
-                    let stringHashtag = self.contentList[i].substring(from: 1, to: self.contentList[i].count-1)
-                    let obj = PostContentType(value: stringHashtag, id:  nil, type: TYPE.HASHTAG)
-                    self.resultList.append(obj)
-                } else{
-                    let obj = PostContentType(value: self.contentList[i], id:  nil, type: TYPE.TEXT)
-                    self.resultList.append(obj)
-                }
-            }
-        }
-        return self.resultList
     }
     
     //detecting attributed ranges of strings in complete textview's text, so that it can be used for painting the uitextview depending on the nature of the text. text can be mention, hashtag or url
@@ -214,9 +169,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
             } else {
                 let stringValue : String = attributedString!.attributedSubstring(from: range).string
                 parts.append(stringValue as AnyObject)
-//                if (!stringValue.trimmingCharacters(in: .whitespaces).isEmpty) {
-//                    parts.append(stringValue as AnyObject)
-//                }
             }
         }
         print(parts)
@@ -245,29 +197,12 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
                 } else {
                     let stringValue : String = attributedString.attributedSubstring(from: range).string
                     parts.append(stringValue as AnyObject)
-                    //                if (!stringValue.trimmingCharacters(in: .whitespaces).isEmpty) {
-                    //                    parts.append(stringValue as AnyObject)
-                    //                }
                 }
             }
             print(parts)
             self.textviewEditMode?.partArray = parts
         }
     }
-    
-//    func canOpenURL(string: String?) -> Bool {
-//        let regExOne = "(^(?:www\\.)|^(?:m\\.))[a-zA-Z0-9@:%._\\+~#=]{2,256}"
-//        let regEx = "^(http(s)?):\\/\\/[a-zA-Z0-9@:%._\\+~#=]{2,256}"
-//        let predicate = NSPredicate(format:"SELF MATCHES %@", argumentArray:[regExOne])
-//        if predicate.evaluate(with: string!.lowercased()){
-//            return true
-//        }
-//        let predicatehttp = NSPredicate(format:"SELF MATCHES %@", argumentArray:[regEx])
-//        if predicatehttp.evaluate(with: string!.lowercased()){
-//            return true
-//        }
-//        return false
-//    }
     
    public func textViewDidBeginEditing(_ textView: UITextView) {
         if textView.textColor == fp_s59.color && placeholderShow {
@@ -277,14 +212,12 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
         }
         if textView.text.isEmpty {
             textView.text = ""
-            //textView.checkPlaceholder()
             self.checkingPlaceholderAndSaveButton(txtView: textView)
         }
     }
     public func textViewDidEndEditing(_ textView: UITextView) {
         if textView.text.isEmpty {
             textView.text = ""
-            //textView.checkPlaceholder()
             self.checkingPlaceholderAndSaveButton(txtView: textView)
             textView.font = fc6.font
             textView.textColor = UIColor.black
@@ -304,25 +237,17 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
         self.timerForShowScrollIndicator = Timer.scheduledTimer(timeInterval: 0.3, target: self, selector: #selector(self.showScrollIndicatorsInContacts), userInfo: nil, repeats: false)
     }
     public func adjustFramesTextView() {
-//        var frameTextview = textviewEditMode?.frame
-//        frameTextview?.size.height = (textviewEditMode?.contentSize.height)! > 134.0 ? (textviewEditMode?.contentSize.height)! : 134.0
-//        delegate?.dynamicHeightTextview(value: (textviewEditMode?.contentSize.height)! > 134.0 ? (textviewEditMode?.contentSize.height)! : 134.0)
-//        textviewEditMode?.frame = frameTextview!
-        
         let fixedWidth = textviewEditMode?.frame.size.width
         let newSize = textviewEditMode?.sizeThatFits(CGSize(width: fixedWidth!, height: CGFloat.greatestFiniteMagnitude))
         delegate?.dynamicHeightTextview(value: (newSize?.height)! > 134.0 ? ((newSize?.height)!+20) : 134.0)
         textviewEditMode?.frame.size = CGSize(width: max((newSize?.width)!, fixedWidth!), height: (newSize?.height)! > 134.0 ? ((newSize?.height)!+20) : 134.0)
     }
     public func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-        //textView.checkPlaceholder()
         self.checkingPlaceholderAndSaveButton(txtView: textView)
         if self.searchString.isEmpty{
-            delegate?.hideNoSearchView()
         }
         if textView.text.count + (text.count - range.length) >= textCount{
             UIApplication.shared.windows.last?.makeToast(NSLocalizedString("post_write_alert_01", comment: ""))
-//            kAppDelegate.window?.makeToast(NSLocalizedString("post_write_alert_01", comment: ""))
             return false
         }
         let currentText = textView.text as NSString
@@ -335,32 +260,25 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
             startTimerForShowScrollIndicator()
         }
         if (text.count<=0 && range.length > 0 && range.length != 1){
-            delegate?.hideTableview()
-            delegate?.hideNoSearchView()
+            self.hideMentionSuggestion(value: true)
             return true
         }
         let updatedText = currentText.replacingCharacters(in: range, with: text) as NSString
         if updatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty{
-            delegate?.disableRightButton()
             self.insertionIndex = -1
             self.hashtagInsertionTag = -1
             searchString = ""
-            delegate?.hideTableview()
-            delegate?.hideNoSearchView()
+            self.hideMentionSuggestion(value: true)
             //return true
         } else{
-            delegate?.enableRightButton()
         }
         self.checking()
-//        let mutableStr = NSMutableAttributedString(string: String(currentText))
-//        textviewEditMode?.setAttrWithoutSpace(word: mutableStr, text: String(currentText), font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
         //handling backspace for mention hashtag and url
         let  char = text.cString(using: String.Encoding.utf8)!
         let isBackSpace = strcmp(char, "\\b")
         // handling backspace
         if isBackSpace == -92{
-            delegate?.hideTableview()
-            delegate?.hideNoSearchView()
+            self.hideMentionSuggestion(value: true)
             let rangeArr = self.textviewEditMode?.rangeArray
             if (rangeArr?.count)!>0{
                 for i in 0...(rangeArr?.count)!-1 where (rangeArr![i]["range"] as? NSRange)!.length+(rangeArr![i]["range"] as? NSRange)!.location == range.location+range.length && rangeArr![i]["type"]! as? String != "post"{
@@ -368,7 +286,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
                     let totalMuatble:NSMutableAttributedString = NSMutableAttributedString.init(attributedString: totalAttrStr!)
                     totalMuatble.deleteCharacters(in: (rangeArr![i]["range"] as? NSRange)!)
                     if totalMuatble.string.isEmpty || totalMuatble.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty{
-                        delegate?.disableRightButton()
                         self.insertionIndex = -1
                         self.hashtagInsertionTag = -1
                         searchString = ""
@@ -380,7 +297,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
                     self.checking()
                     textviewEditMode?.isDeleted = true
                     textviewEditMode?.setAttrWithoutSpace(word: totalMuatble, text: totalMuatble.string, font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-                    //textView.checkPlaceholder()
                     self.checkingPlaceholderAndSaveButton(txtView: textView)
                     return false
                 }
@@ -472,8 +388,7 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
             self.insertionIndex = -1
             searchString = ""
             self.hashtagInsertionTag = -1
-            delegate?.hideTableview()
-            delegate?.hideNoSearchView()
+            self.hideMentionSuggestion(value: true)
         }
         if text == "#"{
             let curCursor = getCurrentCursorPostion()
@@ -521,9 +436,7 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
             }
             delegate?.attheRatePressed(str: searchString)
         } else{
-            delegate?.cancelPreviousAPICall()
-            delegate?.hideTableview()
-            delegate?.hideNoSearchView()
+            self.hideMentionSuggestion(value: true)
         }
         self.adjustFramesTextView()
         return true
@@ -531,7 +444,7 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     func returnedStringAPI(returnedString:String)  {
         showDeleteAttachment = false
         if self.insertionIndex == -1{
-            delegate?.hideTableview()
+            self.hideMentionSuggestion(value: true)
         } else{
             let finalRange = NSRange(location: self.insertionIndex, length: NSString(string: (self.textviewEditMode?.text)!).length-self.insertionIndex)
             var str = ""
@@ -542,26 +455,21 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
             }
             let rangeNew:NSRange?
             if str == "@"{
-                //rangeNew = self.convertingToNsRange(txt: String(self.searchString), range: finalRange)
-                //rangeNew = updatedText.range(of: self.searchString, options: [], range: finalRange)
                 rangeNew = NSString(string: (self.textviewEditMode?.text)!).range(of: str, options: [], range: finalRange)
             } else{
-                //rangeNew = self.convertingToNsRange(txt: String(self.searchString), range: finalRange)
                 rangeNew = NSString(string: (self.textviewEditMode?.text)!).range(of: str, options: [], range: finalRange)
             }
             if rangeNew?.location == NSNotFound{
-                delegate?.hideTableview()
+                self.hideMentionSuggestion(value: true)
                 self.searchString = ""
             } else{
-                //self.setTextTemp(str: totalMuatble)
                 let totalAttrStr = self.textviewEditMode?.attributedText
                 let totalMuatble:NSMutableAttributedString = NSMutableAttributedString.init(attributedString: totalAttrStr!)
                 totalMuatble.replaceCharacters(in: rangeNew!, with: returnedString+" ")
                 self.textviewEditMode?.setAttrWithWordMention(word: totalMuatble, range: rangeNew!, color: Fp_s29.color, text: returnedString, font: Fp_s29.font, attrName: returnedString, cursorPostion: self.getCurrentCursorPostion())
-                delegate?.hideTableview()
+                self.hideMentionSuggestion(value: true)
                 self.setCurrentCursorPosition(cursorPostion: self.insertionIndex+returnedString.count+1)
                 self.searchString = ""
-                // self.insertionIndex = -1
                 self.checking()
                 self.textviewEditMode?.setAttrWithoutSpace(word: totalMuatble, text: totalMuatble.string, font: Fp_s26.font, cursorPostion: self.insertionIndex+returnedString.count+1)
                 self.insertionIndex = -1
@@ -570,7 +478,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
         self.adjustFramesTextView()
     }
     public func textViewDidChange(_ textView: UITextView) {
-        //textView.checkPlaceholder()
         self.checkingPlaceholderAndSaveButton(txtView: textView)
         self.checking()
         let mutableStr = NSMutableAttributedString(string: String(textView.text))
@@ -583,40 +490,9 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     func checkingPlaceholderAndSaveButton(txtView: UITextView) {
         if txtView.checkPlaceholderNew(){
             //it means text is empty in the textview
-            delegate?.disableRightButton()
         } else{
             if txtView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty{
-                delegate?.disableRightButton()
             } else{
-                delegate?.enableRightButton()
-            }
-        }
-        delegate?.showWarningForMentionTxtView(toShow: false)
-    }
-    
-    func deleteSharedPost() {
-        let rangeArr = self.textviewEditMode?.rangeArray
-        if (rangeArr?.count)!>0{
-            for i in 0...(rangeArr?.count)!-1 where (rangeArr![i]["range"] as? NSRange)!.length+(rangeArr![i]["range"] as? NSRange)!.location == getCurrentCursorPostion(){
-                let totalAttrStr = self.textviewEditMode?.attributedText
-                let totalMuatble:NSMutableAttributedString = NSMutableAttributedString.init(attributedString: totalAttrStr!)
-                //totalMuatble.replaceCharacters(in: NSRange(location: (rangeArr![i]["range"] as? NSRange)!.location, length: 1), with: "")
-                totalMuatble.deleteCharacters(in: NSRange(location: (rangeArr![i]["range"] as? NSRange)!.location, length: 1))
-                if totalMuatble.string.isEmpty || totalMuatble.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty{
-                    delegate?.disableRightButton()
-                    self.insertionIndex = -1
-                    self.hashtagInsertionTag = -1
-                    searchString = ""
-                }
-                self.insertionIndex = -1
-                self.hashtagInsertionTag = -1
-                searchString = ""
-                self.setCurrentCursorPosition(cursorPostion: (rangeArr![i]["range"] as? NSRange)!.location)
-                self.checking()
-                textviewEditMode?.partArray = []
-                textviewEditMode?.setAttrWithoutSpace(word: totalMuatble, text: totalMuatble.string, font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-                //textView.checkPlaceholder()
-                self.checkingPlaceholderAndSaveButton(txtView: textviewEditMode!)
             }
         }
     }
@@ -669,7 +545,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     func getCurrentCursorPostion() -> Int {
         if let selectedRange = textviewEditMode?.selectedTextRange {
             let cursorPosition = textviewEditMode?.offset(from: (textviewEditMode?.beginningOfDocument)!, to: selectedRange.start)
-            //print("\(cursorPosition!)")
             return cursorPosition!
         }
         return 0
@@ -684,104 +559,6 @@ public class NewcustomMentionTextview: UIView, UITextViewDelegate {
     func setCurrentCursorPositionToEnd() {
         let newPosition = textviewEditMode?.endOfDocument
         textviewEditMode?.selectedTextRange = textviewEditMode?.textRange(from: newPosition!, to: newPosition!)
-    }
-    
-    func attherateClicked() {
-        //textviewEditMode?.isHashtagAttheRateInserted = true
-        isAtTheRatePressed = true
-        if (textviewEditMode?.textString?.length ?? 0) >= textCount{
-            UIApplication.shared.windows.last?.makeToast(NSLocalizedString("post_write_alert_01", comment: ""))
-            return
-        }
-        delegate?.enableRightButton()
-        textviewEditMode?.becomeFirstResponder()
-        searchString = "@"
-        self.insertionIndex = getCurrentCursorPostion()
-        if placeholderShow{
-            placeholderShow = false
-            textviewEditMode?.text = ""
-        }
-        checking()
-        let strtemp = NSString(string: (textviewEditMode?.text)!)
-        textviewEditMode?.attrString?.insert("@".attributedString, at: getCurrentCursorPostion())
-        let temp = strtemp.replacingCharacters(in: NSRange(location: getCurrentCursorPostion(), length: 0), with: "@")
-        if temp == nil{
-            textviewEditMode?.textString = "@"
-            textviewEditMode?.text = "@"
-            let mutableStr = NSMutableAttributedString(string: (textviewEditMode?.text)!)
-            textviewEditMode?.setAttrWithoutSpace(word: mutableStr, text: "@", font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-        } else{
-            textviewEditMode?.textString = NSString(string: temp)
-            textviewEditMode?.text = temp
-            self.setCurrentCursorPosition(cursorPostion: self.insertionIndex+1)
-            let mutableStr = NSMutableAttributedString(string: (textviewEditMode?.text)!)
-            checkingforAttachment()
-            textviewEditMode?.setAttrWithoutSpace(word: mutableStr, text: temp, font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-        }
-        
-        if temp != nil && getCurrentCursorPostion()>1{
-            if (NSString(string: temp).substring(to: getCurrentCursorPostion()-1).last! == " " || NSString(string: temp).substring(to: getCurrentCursorPostion()-1).last! == "\n"){
-                delegate?.cancelPreviousAPICall()
-                delegate?.attheRatePressed(str: searchString)
-                //textviewEditMode?.checkPlaceholder()
-                self.checkingPlaceholderAndSaveButton(txtView: textviewEditMode!)
-            } else{
-                searchString = ""
-                self.insertionIndex = -1
-            }
-        } else{
-            delegate?.cancelPreviousAPICall()
-            delegate?.attheRatePressed(str: searchString)
-            //textviewEditMode?.checkPlaceholder()
-            self.checkingPlaceholderAndSaveButton(txtView: textviewEditMode!)
-        }
-    }
-    
-    func hashtagClicked() {
-        isAtTheRatePressed = true
-        if (textviewEditMode?.textString?.length ?? 0) >= textCount{
-            UIApplication.shared.windows.last?.makeToast(NSLocalizedString("post_write_alert_01", comment: ""))
-            return
-        }
-        self.hashtagInsertionTag = getCurrentCursorPostion()
-        delegate?.enableRightButton()
-        textviewEditMode?.becomeFirstResponder()
-        if placeholderShow{
-            placeholderShow = false
-            textviewEditMode?.text = ""
-        }
-        checking()
-        let str = textviewEditMode?.textString
-        textviewEditMode?.attrString?.insert("#".attributedString, at: getCurrentCursorPostion())
-        let temp = str?.replacingCharacters(in: NSRange(location: getCurrentCursorPostion(), length: 0), with: "#")
-        if temp == nil{
-            textviewEditMode?.textString = "#"
-            textviewEditMode?.text = "#"
-            let mutableStr = NSMutableAttributedString(string: (textviewEditMode?.text)!)
-            textviewEditMode?.setAttrWithoutSpace(word: mutableStr, text: "#", font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-        } else{
-            textviewEditMode?.textString = NSString(string: temp!)
-            textviewEditMode?.text = temp
-            self.setCurrentCursorPosition(cursorPostion: self.hashtagInsertionTag+1)
-            let mutableStr = NSMutableAttributedString(string: (textviewEditMode?.text)!)
-            checkingforAttachment()
-            textviewEditMode?.setAttrWithoutSpace(word: mutableStr, text: temp!, font: Fp_s26.font, cursorPostion: getCurrentCursorPostion())
-        }
-        self.hashtagInsertionTag = 1
-        //textviewEditMode?.checkPlaceholder()
-        self.checkingPlaceholderAndSaveButton(txtView: textviewEditMode!)
-
-        //        let rangeNew:NSRange?
-        //        rangeNew = NSString(string: (self.textviewEditMode?.text)!).range(of: str!, options: [], range: finalRange)
-        //_ = self.textView(textviewEditMode!, shouldChangeTextIn: NSRange(location: getCurrentCursorPostion(), length: 0), replacementText: "#")
-        if !searchString.isEmpty && insertionIndex != -1{
-            self.searchString += "#"
-            searchString = String(searchString.dropFirst())
-            delegate?.cancelPreviousAPICall()
-            delegate?.attheRatePressed(str: searchString)
-            //                textviewEditMode?.checkPlaceholder()
-            self.checkingPlaceholderAndSaveButton(txtView: textviewEditMode!)
-        }
     }
     
 }
